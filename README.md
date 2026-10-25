@@ -4,7 +4,7 @@ An end-to-end Data Science project that predicts which customers of an online re
 
 ## 🚀 Live Demo
 
-👉 Try the interactive Retention Campaign Simulator *(link after deployment on Streamlit Cloud)*
+👉 [Try the interactive Retention Campaign Simulator](https://customer-churn-cltv.streamlit.app/)
 
 The application allows users to:
 
