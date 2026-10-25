@@ -1,11 +1,22 @@
-# Data (too large for GitHub - see README for download instructions)
-data/raw/
-data/processed/
-# Python / Jupyter
+# Virtual environment
+.venv/
+
+# Python cache
 __pycache__/
 *.pyc
+
+# Jupyter checkpoints
 .ipynb_checkpoints/
-.venv/
-venv/
-# OS
+
+# macOS
 .DS_Store
+
+# VS Code
+.vscode/
+
+# Data (the dataset is downloaded from UCI, see README)
+data/raw/*
+!data/raw/.gitkeep
+
+data/processed/*
+!data/processed/.gitkeep

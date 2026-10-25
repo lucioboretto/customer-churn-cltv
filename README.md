@@ -1,108 +1,225 @@
-# Who should we try to keep? — Churn prediction & value-based retention targeting
+# 🛒 Customer Churn & CLV — Retention Targeting
 
-**End-to-end customer analytics project:** from ~1M raw e-commerce transactions to a retention campaign
-recommendation. Built around a business question, not a metric.
+An end-to-end Data Science project that predicts which customers of an online retailer will stop buying and uses the churn probability together with customer value to decide **who a retention campaign should target**.
 
-> **Business question:** a retailer has a limited retention budget for next quarter.
-> *Which customers should the campaign target to protect the most revenue?*
+## 🚀 Live Demo
 
-**Key result:** ranking customers by **expected revenue at risk (churn probability × customer value)** reaches
-**47% of the value lost to churn while contacting only 20% of customers** — almost **4× more** than a standard
-"highest churn probability" list, which actually performs *worse than random* in value terms.
+👉 Try the interactive Retention Campaign Simulator *(link after deployment on Streamlit Cloud)*
 
-![Targeting strategies](reports/figures/05_value_targeting.png)
+The application allows users to:
+
+- Choose a targeting strategy and the share of customers to contact
+- Change the campaign assumptions (cost per contact, save rate, margin)
+- Compare the net benefit of each strategy
+- Explore the customer segments and the recommended action for each one
+- Look up any customer and download the list of customers to contact
+
+> ⚠️ This application is experimental. It is a backtest on historical data and the campaign assumptions should be validated with the business.
 
 ---
 
-## Approach
+## 📌 Project Overview
 
-| Step | What | Why |
-|---|---|---|
-| 1. Data preparation | Clean 1.07M invoice lines: duplicates from overlapping yearly sheets, 23% missing customer IDs, returns, non-product codes | Raw transactional data, as in a real project |
-| 2. EDA | Seasonality, purchase cycles, revenue concentration | Justifies the churn definition and validation design |
-| 3. Churn definition | Active customer (≥1 order in last 180 days) with **no order in the next 90 days** | Non-contractual business: churn must be defined; 80% of repeat orders happen within ~77 days |
-| 4. Temporal validation | 6 quarterly snapshots: 4 train, 1 validation, **1 untouched test (Sep→Dec 2011)** | No leakage: features only use the past, labels only the future |
-| 5. Modeling | Recency rule baseline vs. Logistic Regression vs. LightGBM | A model only matters if it beats the simple business rule |
-| 6. Explainability | SHAP | Actionable reasons per customer |
-| 7. Decision layer | CLV proxy, expected loss = P(churn) × CLV, campaign simulation with explicit cost/save-rate assumptions | Turn a score into a decision with a budget |
-| 8. Segmentation | Risk × value matrix → next best action per segment | Operational output for marketing |
+My previous projects were regression problems. In this one I wanted to work on a **classification** problem with a clear business application: **customer churn**.
 
-## Results
+In a subscription business, customers cancel a contract, so churn is easy to observe. In an online retailer nobody cancels, customers simply stop buying. So the first challenge was to **define** churn from the raw transactions.
 
-**Model performance — test period (Sep→Dec 2011, never seen during training):**
+The project answers the question:
 
-| Model | ROC-AUC | PR-AUC | Lift @ top 10% | Brier |
-|---|---|---|---|---|
-| Recency rule (baseline) | 0.658 | 0.534 | 1.59 | – |
+> **"With a limited budget, which customers should the retention campaign target to protect the most revenue?"**
+
+---
+
+## 🎯 Motivation
+
+Most churn projects stop when the model has a good AUC. But a churn probability alone doesn't tell the business what to do.
+
+The main objective was to go one step further and translate the model into a decision:
+
+1. **Can we predict which customers will stop buying in the next 90 days?**
+2. **How should the churn probability be combined with the value of each customer to choose who to contact?**
+
+---
+
+## 📊 Dataset
+
+The project uses the [Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii) dataset from the UCI Machine Learning Repository: all the transactions of a UK-based online retailer (gift products, mainly sold to wholesalers) between **December 2009 and December 2011**.
+
+- 1,067,371 invoice lines
+- Invoice, product, quantity, price, date, customer and country
+- After cleaning: **776,579 sales lines from 5,852 customers** (£17.1M revenue)
+
+---
+
+## 🔍 Project Workflow
+
+### 1. Data Understanding
+
+Initial exploration of the raw data: structure, data types, missing values and data quality.
+
+The most interesting finding was that the two sheets of the Excel file **overlap between 1 and 9 December 2010**, creating thousands of duplicated invoices.
+
+### 2. Data Cleaning
+
+- Duplicates removed
+- Rows without Customer ID removed (22.8%, guest purchases that can't be followed over time)
+- Non-product codes removed (postage, fees, manual adjustments)
+- Cancellations saved separately as returns, used later as a feature
+
+### 3. Exploratory Data Analysis
+
+The EDA was focused on the decisions needed for the model:
+
+- **Strong seasonality** before Christmas (September–November)
+- **80% of repeat purchases happen within 77 days** → churn window of 90 days
+- **The top 10% of customers generate 64% of the revenue** → customer value must be part of the decision
+
+### 4. Churn Definition and Feature Engineering
+
+> **Churn = an active customer (purchase in the last 180 days) who doesn't buy in the next 90 days.**
+
+To avoid data leakage, the dataset was built with **quarterly snapshots**: the features only use the 180 days before each snapshot and the label only uses the 90 days after it. The split is **by time**, not random:
+
+| Set | Snapshots |
+|---|---|
+| Train | Jun 2010, Sep 2010, Dec 2010, Mar 2011 |
+| Validation | Jun 2011 |
+| Test | Sep 2011 (Sep → Dec 2011) |
+
+16 features were created: RFM (recency, frequency, monetary), recent activity, basket size, purchase cycle, spend trend, product variety, return rate and seasonality.
+
+### 5. Model Development and Evaluation
+
+Three approaches were compared:
+
+- Recency rule (baseline)
+- Logistic Regression
+- LightGBM
+
+Models were evaluated using ROC-AUC, PR-AUC, Lift and Brier score.
+
+### 6. Business Impact
+
+- CLV (annualised revenue) and **expected loss = churn probability × CLV**
+- Comparison of targeting strategies
+- Campaign simulation with explicit assumptions and sensitivity analysis
+- Risk × value segmentation with a recommended action per segment
+
+---
+
+## 🤖 Final Model
+
+The final model selected was **LightGBM**.
+
+### Performance (test set, Sep → Dec 2011)
+
+| Model | ROC-AUC | PR-AUC | Lift @10% | Brier |
+|---|---:|---:|---:|---:|
+| Recency rule | 0.658 | 0.534 | 1.59 | – |
 | Logistic Regression | 0.731 | 0.586 | 1.75 | 0.200 |
 | **LightGBM** | **0.733** | **0.590** | **1.76** | **0.200** |
 
-* Both ML models clearly beat the business rule; performance is stable from validation to test.
-* Logistic Regression is almost as good as LightGBM — the signal is mostly monotonic, so a transparent linear model is a defensible choice.
-* Probabilities are well calibrated (mean prediction 40.4% vs. actual churn 38.5%), so they can be multiplied by £ values.
+Both Machine Learning models clearly beat the simple recency rule. Logistic Regression performed almost the same as LightGBM, which shows that the relationship between the features and churn is quite simple and that **good features matter more than a complex algorithm**.
 
-![Gains and calibration](reports/figures/03_gains_calibration.png)
+The probabilities are well calibrated (average prediction 40.4% vs real churn rate 38.5%), so they can be multiplied by the value of each customer.
 
-**Main churn drivers (SHAP):** the upcoming Q4 peak season lowers risk for everyone; order frequency is the
-strongest protector; single-order customers, long time since last order and high return rates raise risk.
+---
 
-![SHAP](reports/figures/04_shap_summary.png)
+## 🧠 Model Interpretability
 
-**Targeting with a 20% contact budget (test period):**
+SHAP was used to understand the model:
 
-| Strategy | Churners reached | Share of lost value reached | Net benefit* |
-|---|---|---|---|
-| Random | 200 | 17% | – |
-| Highest churn probability | 338 | 13% | £1.1k |
-| Highest value | 75 | 39% | £20.6k |
-| **Highest expected loss (P × CLV)** | 137 | **47%** | **£26.9k** |
+- **Seasonality** has the biggest effect: before the Christmas peak the risk decreases for everyone.
+- **Frequency** is the strongest protection: customers with many orders rarely churn.
+- **Customers with only one order** have a higher risk.
+- High **value** and many different **products** reduce the risk.
+- High **recency** and a high **return rate** increase the risk.
 
-\*Assumptions (explicit parameters in the notebook): £15 per contact, 20% of targeted churners retained, 30% gross
-margin. The £ amounts depend on them; the ranking of strategies holds for save rates of 10–30%.
+As in my previous project, these results describe the behaviour of the model and should not be interpreted as causality.
 
-**Segmentation & next best action:**
+---
 
-| Segment | Customers | Share of value actually lost | Action |
-|---|---|---|---|
-| 1. Save now (high value, above-average risk) | 64 | 20% | Account-manager call + tailored offer |
-| 2. Protect & grow (high value, low risk) | 630 | 24% | Loyalty programme, early Q4 access, cross-sell |
-| 3. Automated win-back (low value, high risk) | 1,409 | 36% | Low-cost email sequence with discount |
-| 4. Business as usual | 672 | 21% | Standard newsletter, no incentive spend |
+## 💡 Business Impact
 
-![Segmentation](reports/figures/07_risk_value_matrix.png)
+This is the most important result of the project.
 
-## Recommendations
+Contacting **20% of the active customers** (555 customers):
 
-1. **Target by expected revenue at risk, not by churn probability.**
-2. **Start with the 64 "Save now" customers** (~2% of the base, 20% of lost value) — personal contact pays off here.
-3. **Automate win-back for low-value at-risk customers**; don't spend incentives on customers who aren't at risk.
-4. **Act in September**, before the Q4 peak.
+| Strategy | Churners reached | Share of lost value reached |
+|---|---:|---:|
+| Random | 200 | 17% |
+| Highest churn probability | 338 | 13% |
+| Highest value (CLV) | 75 | 39% |
+| **Highest expected loss** | 137 | **47%** |
 
-## Limitations & next steps
+Ranking customers only by churn probability finds the most churners, but most of them are small customers: it reaches **even less lost value than random**. Ranking by **expected loss** reaches **47% of the lost value**, almost 4 times more.
 
-* **Prediction ≠ causal impact.** Next step: an A/B test or **uplift model** to measure which customers a campaign actually changes, and the real save rate.
-* **CLV is a proxy** (annualised recent revenue) → a BG/NBD + Gamma-Gamma model would give a forward-looking CLV.
-* **Only transactional data**; marketing contacts, web behaviour or service tickets would likely improve the model.
-* Only two Q4 seasons in the data → monitor and recalibrate quarterly once deployed.
+![Lost value reached by targeting strategy](images/value_curve.png)
 
-## Repository structure
+With my assumptions (£15 per contact, 20% save rate, 30% margin), the expected-loss strategy generates a **net benefit of about £26,900**, compared with £1,100 for the churn-probability strategy. The amounts depend on the assumptions, but the expected-loss strategy is the best for every save rate tested (10–30%).
 
-```
+### Customer segments
+
+| Segment | Customers | Share of lost value | Recommended action |
+|---|---:|---:|---|
+| 1. Save now (high value, high risk) | 64 | 20% | Account manager call + tailored offer |
+| 2. Protect & grow (high value, low risk) | 630 | 24% | Loyalty programme, cross-selling |
+| 3. Automated win-back (low value, high risk) | 1,409 | 36% | Automated emails with discount |
+| 4. Business as usual | 672 | 21% | Standard newsletter |
+
+![Risk x value segmentation](images/risk_value_matrix.png)
+
+**Only 64 customers (2% of the base) concentrate 20% of the value lost.**
+
+---
+
+## ⚠️ Limitations
+
+This is an educational and portfolio project, and there are some important limitations:
+
+- **Prediction is not causality.** The model finds customers who are likely to leave, not customers whose behaviour a campaign would change. The next step would be an **A/B test** and an **uplift model**.
+- The **CLV is a simple proxy** (annualised recent revenue). A BG/NBD + Gamma-Gamma model would give a better estimate.
+- The campaign assumptions (cost, save rate, margin) are mine and should be validated with the business.
+- The data only contains transactions. Marketing, web or customer service data would probably improve the model.
+- There are only two Christmas seasons in the data.
+
+---
+
+## 🗂️ Project Structure
+
+```text
+customer-churn-cltv/
+│
 ├── notebooks/
-│   └── churn_cltv.ipynb      # full analysis, end-to-end, with outputs
-├── reports/figures/          # charts used in this README
-├── data/                     # not versioned (see below)
+│   ├── 01_data_understanding.ipynb
+│   ├── 02_data_cleaning.ipynb
+│   ├── 03_eda.ipynb
+│   ├── 04_churn_definition_and_features.ipynb
+│   ├── 05_modeling.ipynb
+│   └── 06_business_impact.ipynb
+│
+├── app_data/
+│   └── customers_scored.csv
+├── models/
+│   └── churn_lgbm_model.pkl
+├── images/
+├── app.py
 ├── requirements.txt
 └── README.md
 ```
 
-## How to reproduce
+To reproduce the project, download the dataset from the UCI repository, save `online_retail_II.xlsx` in `data/raw/` and run the notebooks in order.
 
-1. Download the dataset from the [UCI ML Repository](https://archive.ics.uci.edu/dataset/502/online+retail+ii) and place
-   `online_retail_II.xlsx` in `data/raw/`.
-2. Install dependencies: `pip install -r requirements.txt`
-3. Run `notebooks/churn_cltv.ipynb`. The first run converts the Excel file to Parquet (a few minutes); later runs load in seconds.
+## 🛠️ Technologies
 
-**Tech stack:** Python · pandas · scikit-learn · LightGBM · SHAP · matplotlib
-
-**Data source:** Chen, D. (2012). *Online Retail II* [Dataset]. UCI Machine Learning Repository. https://doi.org/10.24432/C5CG6D
+Python
+Pandas
+NumPy
+Matplotlib
+Seaborn
+Scikit-learn
+LightGBM
+SHAP
+Streamlit
+Git
+GitHub
